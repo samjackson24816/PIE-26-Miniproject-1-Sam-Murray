@@ -103,8 +103,6 @@ void loop() {
 
 
 
-
-  double digitalRead
   
 
 
