@@ -13,11 +13,20 @@ Right: turning Right
 */
 
 
+
+
+
 int SWITCH_BUTTON = 8;
 int LEDs[] = {9, 10, 11, 12, 13};
 int LED_NUM = 5;
 int POT_PIN = A5;
 
+// The potentionmeter varaiables
+int Center = 512;
+int Dead_Zone = 120;
+int Steer_Straight = 0;
+int Steer_Left = 1;
+int Steer_Right = 2;
 
 void setup() {
   pinMode(SWITCH_BUTTON, INPUT_PULLUP);
@@ -40,6 +49,11 @@ double timeCounter = 0.0; // time since last mode switch
 double timeOffset = 0.0; // Helps us reset timeCounter
 
 bool lastSwitchButtonState = false;
+
+
+int Last_Steering = Steer_Straight;
+double Steer_Offset = 0.0;
+
 
 void loop() {
 
@@ -74,34 +88,90 @@ void loop() {
   }
 
   
+  int Steering = readSteering();
 
+  int (Steering != lastSteering) {
+    lastSteering = Steering;
+    Steer_Offset = millis() / 1000.00 // seconds
+  }
+
+  double SteerTime = (milllis() / 1000.00) -Steer_Offset
 
   bool ledVals[] = {false, false, false, false, false};
 
-
-  switch (mode) {
-    case 0:
-      Serial.println("Off");
-      break;
-    case 1:
-      Serial.println("All on");
-      modeAllOn(ledVals, timeCounter);
-      break;
-    case 2:
-      Serial.println("Flashing");
-      modeFlashing(ledVals, timeCounter);
-      break;
-    case 3:
-      Serial.println("Back and forth");
-      modeBackAndForth(ledVals, timeCounter);
-      break;
-    case 4:
-      Serial.println("SOS");
-      modeSOS(ledVals, timeCounter);
-      break;
+  if (Steering == Steer_Left) {
+    Serial.println("Turning left");
+    signalLeft(ledVals, SteerTime);
+  } else if (Steering == Steer_Right) {
+    Serial.println("Turning right");
+  } else {
+    switch (mode) {
+      case 0:
+        Serial.println("Off");
+        break;
+      case 1:
+        Serial.println("All on");
+        modeAllOn(ledVals, timeCounter);
+        break;
+      case 2:
+        Serial.println("Flashing");
+        modeFlashing(ledVals, timeCounter);
+        break;
+      case 3:
+        Serial.println("Back and forth");
+        modeBackAndForth(ledVals, timeCounter);
+        break;
+      case 4:
+        Serial.println("SOS");
+        modeSOS(ledVals, timeCounter);
+        break;
+    }
   }
 
+int readSteering() {
+  int potVal = analogRead(POT_PIN);
 
+  if (potVal < Center - Dead_Zone) {
+    return Steer_Left;
+  }
+
+  if (potVal > Center + Dead_Zone) {
+    return Steer_Right;
+  }
+
+  return Steer_Straight
+}
+
+// 
+void signalLeft(bool ledVals[], double time) {
+  unsigned int sequence[] = {
+    0b10000,
+    0b11000,
+    0b11100,
+    0b11110,
+    0b11111,
+    0b00000
+  };
+
+  int sequenceLen = 6;
+
+  sequenceTemplate(ledVals, time, sequence, sequenceLen, 1.5);
+}
+
+void signalRight(bool ledVals[], double time) {
+  unsigned int sequence[] = {
+    0b00001,
+    0b00011,
+    0b00111,
+    0b01111,
+    0b11111,
+    0b00000
+  };
+
+  int sequenceLen = 6;
+
+  sequenceTemplate(ledVals, time, sequence, sequenceLen, 1.5);
+}
 
   
 
