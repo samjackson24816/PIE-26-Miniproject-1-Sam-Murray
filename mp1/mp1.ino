@@ -49,64 +49,66 @@ int MODE_NUM = 5;
 
 
 double timeCounter = 0.0; // time since last mode switch
-
 double timeOffset = 0.0; // Helps us reset timeCounter
+bool lastButtonState = HIGH;
 
-bool lastSwitchButtonState = false;
-
-unsigned long Long_Press_Ms = 3000; // how long the button must be held to count as a long int
 unsigned long Press_Start_Time = 0;
-bool Long_Press_Handled = false;
+unsigned long Long_Press_Ms = 3000;
 
-bool Leds_Off = false; // set true by a long press, cleared again by the next short click
+bool Leds_Off = false;
 
 int Last_Steering = STEER_STRAIGHT;
 
 double steerOffset = 0.0; // Same idea as timeOffset, but for the turn signal
 
 void loop() {
+  int buttonState = digitalRead(SWITCH_BUTTON);
+  if (lastButtonState == HIGH && buttonState == LOW) {
 
-  // It's an input pullup so the value is inverted
-  int switchButtonVal = digitalRead(SWITCH_BUTTON);
-  bool switchButtonState = true;
-  if (switchButtonVal == HIGH) {
-    switchButtonState = false;
-  }
+    Press_Start_Time = millis();
 
-  // Detect when the button has just been pressed down
-  bool buttonPressed = false;
-  bool Button_Released = false;
+    Serial.println("BUTTON PRESSED");
+}
 
-  if (switchButtonState != lastSwitchButtonState) {
+// Button just released
+// LOW -> HIGH
+if (lastButtonState == LOW && buttonState == HIGH) {
 
-    lastSwitchButtonState = switchButtonState;
+    unsigned long pressTime =
+        millis() - Press_Start_Time;
 
-    if (switchButtonState == true) {
-      buttonPressed = true;
-      Press_Start_Time = millis();
-      Long_Press_Handled = false;
-    } else {
-      Button_Released = true;
+    Serial.print("BUTTON RELEASED, press time = ");
+    Serial.println(pressTime);
+
+    // Long press
+    if (pressTime >= Long_Press_Ms) {
+
+        Leds_Off = true;
+
+        Serial.println("LONG PRESS -> OFF");
     }
-  }
 
-  // While the button is still held down, watch for it crossing the long-press threshold
-  if (switchButtonState == true && !Long_Press_Handled) {
-    if (millis() - Press_Start_Time >= Long_Press_Ms) {
-      Long_Press_Handled = true;
-      Leds_Off = true;
+    // Short press
+    else {
+
+        mode++;
+
+        if (mode >= MODE_NUM) {
+            mode = 0;
+        }
+
+        Leds_Off = false;
+
+        timeOffset = millis() / 1000.0;
+
+        Serial.print("SHORT PRESS -> MODE = ");
+        Serial.println(mode);
     }
-  }
+}
 
-  if (Button_Released && !Long_Press_Handled) {
-    mode++;
-    if (mode >= MODE_NUM) {
-      mode = 0;
-    }
-    Leds_Off = false;
-    timeOffset = millis() / 1000.0;
-  }
 
+// Save current state for next loop
+  lastButtonState = buttonState;
   timeCounter = (millis() / 1000.0) - timeOffset;
 
 
@@ -176,7 +178,7 @@ void loop() {
 
 
 void modeAllOn(bool ledVals[], double time) {
-  int sequence[] = {
+  unsigned int sequence[] = {
     0b11111111
   };
 
@@ -187,7 +189,7 @@ void modeAllOn(bool ledVals[], double time) {
 
 
 void modeFlashing(bool ledVals[], double time) {
-  int sequence[] = {
+  unsigned int sequence[] = {
     0b11111111,
     0b00000000
   };
@@ -200,7 +202,7 @@ void modeFlashing(bool ledVals[], double time) {
 
 void modeBackAndForth(bool ledVals[], double time) {
 
-  int sequence[] = {
+  unsigned int sequence[] = {
     0b10000000,
     0b01000000,
     0b00100000,
@@ -225,7 +227,7 @@ void modeBackAndForth(bool ledVals[], double time) {
 
 void modeSOS(bool ledVals[], double time) {
 
-  int sequence[] = {
+  unsigned int sequence[] = {
     0b11111111,
     0b00000000,
     0b11111111,
@@ -281,7 +283,7 @@ int readSteering() {
 
 // Fills up towards LEDs[0] (pin 9), then blanks before repeating
 void signalLeft(bool ledVals[], double time) {
-  int sequence[] = {
+  unsigned int sequence[] = {
     0b10000000,
     0b11000000,
     0b11100000,
@@ -301,7 +303,7 @@ void signalLeft(bool ledVals[], double time) {
 
 // Mirror of signalLeft: fills up towards LEDs[4] (pin 13)
 void signalRight(bool ledVals[], double time) {
-  int sequence[] = {
+  unsigned int sequence[] = {
     0b00000001,
     0b00000011,
     0b00000111,
@@ -313,7 +315,7 @@ void signalRight(bool ledVals[], double time) {
     0b00000000
   };
 
-  int sequenceLen = 6;
+  int sequenceLen = 9;
 
   sequenceTemplate(ledVals, time, sequence, sequenceLen, 1.5);
 }
