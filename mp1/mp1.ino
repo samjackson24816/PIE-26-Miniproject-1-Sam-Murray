@@ -14,19 +14,23 @@ Right: turning Right
 
 
 
-
-
 int SWITCH_BUTTON = 8;
-int LEDs[] = {9, 10, 11, 12, 13};
-int LED_NUM = 5;
+int LEDs[] = {5, 6, 7, 9, 10, 11, 12, 13};
+int LED_NUM = 8;
 int POT_PIN = A5;
 
-// The potentionmeter varaiables
-int Center = 512;
-int Dead_Zone = 120;
-int Steer_Straight = 0;
-int Steer_Left = 1;
-int Steer_Right = 2;
+
+// The potentiometer is a steering wheel. Near the middle means driving
+// straight, turning it far enough either way asks for a turn signal, which
+// takes priority over whichever mode is selected.
+int POT_CENTER = 512;   // analogRead value with the knob centered
+int POT_DEADZONE = 150; // how far the knob must move before a turn registers
+
+// Steering positions
+int STEER_STRAIGHT = 0;
+int STEER_LEFT = 1;
+int STEER_RIGHT = 2;
+
 
 void setup() {
   pinMode(SWITCH_BUTTON, INPUT_PULLUP);
@@ -50,10 +54,15 @@ double timeOffset = 0.0; // Helps us reset timeCounter
 
 bool lastSwitchButtonState = false;
 
+unsigned long Long_Press_Ms = 3000; // how long the button must be held to count as a long int
+unsigned long Press_Start_Time = 0;
+bool Long_Press_Handled = false;
 
-int Last_Steering = Steer_Straight;
-double Steer_Offset = 0.0;
+bool Leds_Off = false; // set true by a long press, cleared again by the next short click
 
+int Last_Steering = STEER_STRAIGHT;
+
+double steerOffset = 0.0; // Same idea as timeOffset, but for the turn signal
 
 void loop() {
 
@@ -66,44 +75,63 @@ void loop() {
 
   // Detect when the button has just been pressed down
   bool buttonPressed = false;
+  bool Button_Released = false;
 
   if (switchButtonState != lastSwitchButtonState) {
-    
+
     lastSwitchButtonState = switchButtonState;
 
     if (switchButtonState == true) {
       buttonPressed = true;
-      timeOffset = millis() / 1000.0;
+      Press_Start_Time = millis();
+      Long_Press_Handled = false;
+    } else {
+      Button_Released = true;
     }
+  }
+
+  // While the button is still held down, watch for it crossing the long-press threshold
+  if (switchButtonState == true && !Long_Press_Handled) {
+    if (millis() - Press_Start_Time >= Long_Press_Ms) {
+      Long_Press_Handled = true;
+      Leds_Off = true;
+    }
+  }
+
+  if (Button_Released && !Long_Press_Handled) {
+    mode++;
+    if (mode >= MODE_NUM) {
+      mode = 0;
+    }
+    Leds_Off = false;
+    timeOffset = millis() / 1000.0;
   }
 
   timeCounter = (millis() / 1000.0) - timeOffset;
 
 
-  if (buttonPressed) {
-    mode++;
-    if (mode >= MODE_NUM) {
-      mode = 0;
-    }
+
+  // Restart the turn signal whenever the steering wheel moves, so the sweep
+  // always begins at its first frame
+  int steering = readSteering();
+
+  if (steering != Last_Steering) {
+    Last_Steering = steering;
+    steerOffset = millis() / 1000.0;
   }
 
-  
-  int Steering = readSteering();
+  double steerTime = (millis() / 1000.0) - steerOffset;
 
-  int (Steering != lastSteering) {
-    lastSteering = Steering;
-    Steer_Offset = millis() / 1000.00 // seconds
-  }
 
-  double SteerTime = (milllis() / 1000.00) -Steer_Offset
+  bool ledVals[] = {false, false, false, false, false, false, false, false};
 
-  bool ledVals[] = {false, false, false, false, false};
 
-  if (Steering == Steer_Left) {
+  if (steering == STEER_LEFT) {
     Serial.println("Turning left");
-    signalLeft(ledVals, SteerTime);
-  } else if (Steering == Steer_Right) {
+    signalLeft(ledVals, steerTime);
+  } else if (steering == STEER_RIGHT) {
     Serial.println("Turning right");
+    signalRight(ledVals, steerTime);
   } else {
     switch (mode) {
       case 0:
@@ -128,54 +156,13 @@ void loop() {
     }
   }
 
-int readSteering() {
-  int potVal = analogRead(POT_PIN);
-
-  if (potVal < Center - Dead_Zone) {
-    return Steer_Left;
-  }
-
-  if (potVal > Center + Dead_Zone) {
-    return Steer_Right;
-  }
-
-  return Steer_Straight
+  // Long press overrides everything
+  if (Leds_Off) {
+    for (int i = 0; i < LED_NUM; i++) {
+        ledVals[i] = false;
+    }
 }
-
-// 
-void signalLeft(bool ledVals[], double time) {
-  unsigned int sequence[] = {
-    0b10000,
-    0b11000,
-    0b11100,
-    0b11110,
-    0b11111,
-    0b00000
-  };
-
-  int sequenceLen = 6;
-
-  sequenceTemplate(ledVals, time, sequence, sequenceLen, 1.5);
-}
-
-void signalRight(bool ledVals[], double time) {
-  unsigned int sequence[] = {
-    0b00001,
-    0b00011,
-    0b00111,
-    0b01111,
-    0b11111,
-    0b00000
-  };
-
-  int sequenceLen = 6;
-
-  sequenceTemplate(ledVals, time, sequence, sequenceLen, 1.5);
-}
-
   
-
-
   // Send the values to the LEDs
   for (int led = 0; led < LED_NUM; led++) {
     if (ledVals[led] == true) {
@@ -189,8 +176,8 @@ void signalRight(bool ledVals[], double time) {
 
 
 void modeAllOn(bool ledVals[], double time) {
-  unsigned int sequence[] = {
-    0b11111
+  int sequence[] = {
+    0b11111111
   };
 
   int sequenceLen = 1;
@@ -200,9 +187,9 @@ void modeAllOn(bool ledVals[], double time) {
 
 
 void modeFlashing(bool ledVals[], double time) {
-  unsigned int sequence[] = {
-    0b11111,
-    0b00000
+  int sequence[] = {
+    0b11111111,
+    0b00000000
   };
 
   int sequenceLen = 2;
@@ -214,17 +201,23 @@ void modeFlashing(bool ledVals[], double time) {
 void modeBackAndForth(bool ledVals[], double time) {
 
   int sequence[] = {
-    0b10000,
-    0b01000,
-    0b00100,
-    0b00010,
-    0b00001,
-    0b00010,
-    0b00100,
-    0b01000
+    0b10000000,
+    0b01000000,
+    0b00100000,
+    0b00010000,
+    0b00001000,
+    0b00000100,
+    0b00000010,
+    0b00000001,
+    0b00000010,
+    0b00000100,
+    0b00001000,
+    0b00010000,
+    0b00100000,
+    0b01000000
   };
   
-  int sequenceLen = 8;
+  int sequenceLen = 14;
 
   sequenceTemplate(ledVals, time, sequence, sequenceLen, 1);
 }
@@ -233,39 +226,96 @@ void modeBackAndForth(bool ledVals[], double time) {
 void modeSOS(bool ledVals[], double time) {
 
   int sequence[] = {
-    0b11111,
-    0b00000,
-    0b11111,
-    0b00000,
-    0b11111,
-    0b00000,
-    0b00000,
-    0b00000,
-    0b11111,
-    0b11111,
-    0b11111,
-    0b00000,
-    0b11111,
-    0b11111,
-    0b11111,
-    0b00000,
-    0b11111,
-    0b11111,
-    0b11111,
-    0b00000,
-    0b11111,
-    0b00000,
-    0b11111,
-    0b00000,
-    0b11111,
-    0b00000,
-    0b00000,
-    0b00000
+    0b11111111,
+    0b00000000,
+    0b11111111,
+    0b00000000,
+    0b11111111,
+    0b00000000,
+    0b00000000,
+    0b00000000,
+    0b11111111,
+    0b11111111,
+    0b11111111,
+    0b00000000,
+    0b11111111,
+    0b11111111,
+    0b11111111,
+    0b00000000,
+    0b11111111,
+    0b11111111,
+    0b11111111,
+    0b00000000,
+    0b11111111,
+    0b00000000,
+    0b11111111,
+    0b00000000,
+    0b11111111,
+    0b00000000,
+    0b00000000,
+    0b00000000
   };
   
   int sequenceLen = 28;
 
   sequenceTemplate(ledVals, time, sequence, sequenceLen, 0.1);
+}
+
+
+// The low end of the potentiometer is a left turn and the high end is a right
+// turn. Swap the two returns if the knob feels backwards on your build.
+int readSteering() {
+  int potVal = analogRead(POT_PIN);
+
+  if (potVal < POT_CENTER - POT_DEADZONE) {
+    return STEER_LEFT;
+  }
+
+  if (potVal > POT_CENTER + POT_DEADZONE) {
+    return STEER_RIGHT;
+  }
+
+  return STEER_STRAIGHT;
+}
+
+
+// Fills up towards LEDs[0] (pin 9), then blanks before repeating
+void signalLeft(bool ledVals[], double time) {
+  int sequence[] = {
+    0b10000000,
+    0b11000000,
+    0b11100000,
+    0b11110000,
+    0b11111000,
+    0b11111100,
+    0b11111110,
+    0b11111111,
+    0b00000000
+  };
+
+  int sequenceLen = 9;
+
+  sequenceTemplate(ledVals, time, sequence, sequenceLen, 1.5);
+}
+
+
+// Mirror of signalLeft: fills up towards LEDs[4] (pin 13)
+void signalRight(bool ledVals[], double time) {
+  int sequence[] = {
+    0b00000001,
+    0b00000011,
+    0b00000111,
+    0b00001111,
+    0b00011111,
+    0b00111111,
+    0b01111111,
+    0b11111111,
+    0b00000000
+  };
+
+  int sequenceLen = 6;
+
+  sequenceTemplate(ledVals, time, sequence, sequenceLen, 1.5);
 }
 
 
