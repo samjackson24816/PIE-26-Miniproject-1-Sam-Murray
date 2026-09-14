@@ -1,0 +1,1 @@
+This repo contains our Arduino code for the Principals of Integrated Engineering Bike Blinker Project. It contains our arduino code in the mp1 folder, as well as files needed to run a simulation test with the SimulIDE Arduino Simulator.
